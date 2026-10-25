@@ -14,6 +14,7 @@ const RADII = [1000, 2500, 5000, 10000, 25000, 50000, 100000, 200000];
 const MAP_LOAD_MIN_ZOOM = 10;  // darunter werden beim Verschieben keine neuen Stationen geladen
 const BOX_TTL = 10 * 60 * 1000;
 const DETAILS_TTL = 24 * 60 * 60 * 1000;
+const OPEN_MAP_MAX = 150;      // "Jetzt geöffnet" auf der Karte: höchstens so viele Details (3 Anfragen) nachladen
 const DEFAULT_VIEW = { lat: 51.16, lng: 10.45, zoom: 6 };
 let userMovedMap = false;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -180,11 +181,13 @@ function markerStyle(s, selected) {
 }
 
 const matchesStatic = s => (!state.filters.fountain || s.fountain) && (!state.filters.accessible || s.accessible);
+// "Jetzt geöffnet" braucht die Öffnungszeiten aus den Details; ohne sie gilt eine Station als nicht geöffnet.
+const matchesMap = s => matchesStatic(s) && (!state.filters.open || !!statusFor(s)?.open);
 
 function syncMarkers() {
   for (const s of state.stations.values()) {
     let m = markers.get(s.id);
-    if (!matchesStatic(s)) {
+    if (s.id !== state.selected && !matchesMap(s)) {
       if (m) markerLayer.removeLayer(m);
       continue;
     }
@@ -220,7 +223,7 @@ function setSelectedMarker(id) {
     const s = state.stations.get(x);
     if (s && markers.has(x)) markers.get(x).setStyle(markerStyle(s, x === id));
   }
-  markers.get(id)?.bringToFront();
+  syncMarkers(); // die gewählte Station ist immer sichtbar, auch wenn sie nicht zu den Filtern passt
 }
 
 let userMarker = null;
@@ -427,7 +430,10 @@ async function ensureDetails(ids) {
     const d = state.details.get(id);
     return !d || Date.now() - d.fetched > DETAILS_TTL;
   });
-  if (!stale.length || !navigator.onLine) return;
+  if (!stale.length || !navigator.onLine) {
+    if (missing.length && state.filters.open) syncMarkers();
+    return;
+  }
   try {
     const fresh = await api.fetchDetails(stale);
     for (const d of fresh) state.details.set(d.id, d);
@@ -435,6 +441,7 @@ async function ensureDetails(ids) {
   } catch (err) {
     console.warn('Details konnten nicht geladen werden', err);
   }
+  if (state.filters.open) syncMarkers();
 }
 
 const hoursCache = new Map();
@@ -748,6 +755,7 @@ for (const chip of document.querySelectorAll('.chip[data-filter]')) {
     const key = chip.dataset.filter;
     state.filters[key] = !state.filters[key];
     applyFilters();
+    if (key === 'open') loadVisible();
     if (!state.ref) return;
     if (key === 'open') renderList();
     else findNearby({ fit: false });
@@ -1050,13 +1058,39 @@ document.addEventListener('pointerdown', e => {
 
 /* ---------- Kartenbewegung ---------- */
 
+function showZoomHint(text) {
+  const hint = $('#zoom-hint');
+  hint.hidden = !text;
+  if (text) hint.textContent = text;
+}
+
+/** Für "Jetzt geöffnet" die Öffnungszeiten der sichtbaren Stationen nachladen, sofern es nicht zu viele sind. */
+async function loadVisibleHours() {
+  if (!state.filters.open) return;
+  const b = map.getBounds();
+  const box = { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
+  const ids = [...state.stations.values()].filter(s => matchesStatic(s) && inBBox(box, s)).map(s => s.id);
+  if (ids.length > OPEN_MAP_MAX) {
+    syncMarkers();
+    if (!state.offline) showZoomHint('Für „Jetzt geöffnet“ hineinzoomen');
+    return;
+  }
+  await ensureDetails(ids);
+  if (state.ref && !state.selected) renderList();
+}
+
 const loadVisible = debounce(() => {
   const z = map.getZoom();
-  $('#zoom-hint').hidden = z >= MAP_LOAD_MIN_ZOOM || state.offline || z < 5;
-  if (z < MAP_LOAD_MIN_ZOOM || state.offline) return;
+  showZoomHint(z >= MAP_LOAD_MIN_ZOOM || state.offline || z < 5 ? ''
+    : state.filters.open ? 'Für „Jetzt geöffnet“ hineinzoomen' : 'Für mehr Stationen hineinzoomen');
+  if (z < MAP_LOAD_MIN_ZOOM || state.offline) {
+    loadVisibleHours(); // offline: Öffnungszeiten aus dem Speicher
+    return;
+  }
   const b = map.getBounds().pad(0.15);
   loadBox({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() })
     .then(() => { if (state.ref) { computeNearby(); if (!state.selected) renderList(); } })
+    .then(loadVisibleHours)
     .catch(err => console.warn('Kartenbereich konnte nicht geladen werden', err));
 }, 450);
 
@@ -1225,7 +1259,9 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 
 setInterval(() => {
   // Öffnungsstatus aktuell halten
-  if (!document.hidden && state.ref && !state.selected) renderList();
+  if (document.hidden) return;
+  if (state.ref && !state.selected) renderList();
+  if (state.filters.open) syncMarkers();
 }, 60 * 1000);
 
 async function init() {

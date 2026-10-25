@@ -8,7 +8,7 @@ Die offizielle Karte auf refill-deutschland.de ist ein eingebettetes iframe von 
 
 - **Nächste Stationen zuerst:** Standort freigeben → Liste sortiert nach Entfernung mit Gehzeit; die Karte zoomt auf die nächsten Treffer.
 - **Öffnungsstatus:** „Geöffnet bis 18:00“ / „Geschlossen · öffnet morgen 10:00“. Die Öffnungszeiten sind bei Karte von Morgen Freitext; `js/hours.js` versteht OSM-Syntax und gängige deutsche Schreibweisen. Ist ein Text nicht eindeutig, wird er unverändert angezeigt statt einen falschen Status zu behaupten (bei echten Daten werden ca. ⅔ erkannt).
-- **Filter:** Jetzt geöffnet, Trinkbrunnen, Barrierefrei.
+- **Filter:** Jetzt geöffnet, Trinkbrunnen, Barrierefrei – wirken auf Liste und Karte. Für „Jetzt geöffnet“ lädt die App die Öffnungszeiten der sichtbaren Stationen nach (höchstens 150, sonst Hinweis zum Hineinzoomen); Stationen ohne lesbare Öffnungszeiten werden dabei ausgeblendet.
 - **Ortssuche** (Photon/OpenStreetMap) und „Hier suchen“ nach dem Verschieben der Karte.
 - **Detailansicht** mit Route (Apple Karten auf iOS, sonst Google Maps, jeweils zu Fuß), Anrufen, Website, Teilen, Adresse, Wochenübersicht und Link zum Korrigieren bei Karte von Morgen.
 - **Bedienung am Handy:** Bottom-Sheet mit drei Rastpunkten (wischen oder antippen), große Touch-Ziele, Zurück-Taste schließt die Detailansicht. Ab 800 px Breite wird das Sheet zur Seitenleiste.
