@@ -75,7 +75,7 @@ icons/                  App-Icons; PNGs werden mit tools/make_icons.py aus icon.
 
 ### Wie die Umkreissuche funktioniert
 
-Die Such-API liefert höchstens 2000 Einträge pro Anfrage und sortiert nicht nach Entfernung. Deshalb fragt die App wachsende Boxen um den Standort ab (1 km, 2,5 km, 5 km … 200 km), bis mindestens 25 passende Stationen im Radius liegen. Danach werden die 50 nächsten sortiert und ihre Details (Adresse, Öffnungszeiten) in einem Sammelaufruf nachgeladen. Bereits geladene Bereiche werden 10 Minuten lang nicht erneut abgefragt; Stationen, die upstream gelöscht wurden, verschwinden beim nächsten vollständigen Laden des Bereichs aus dem lokalen Cache.
+Die Such-API liefert höchstens 2000 Einträge pro Anfrage und sortiert nicht nach Entfernung. Deshalb fragt die App wachsende Boxen um den Standort ab (1 km, 2,5 km, 5 km … 200 km), bis mindestens 25 passende Stationen im Radius liegen. Danach werden die 50 nächsten sortiert und ihre Details (Adresse, Öffnungszeiten) in einem Sammelaufruf nachgeladen. Mit „Jetzt geöffnet“ zählen nur nachweislich geöffnete Stationen: Die App lädt dann pro Radius die Öffnungszeiten nach, bis mindestens 10 geöffnete gefunden oder 200 Stationen geprüft sind. Bereits geladene Bereiche werden 10 Minuten lang nicht erneut abgefragt; Stationen, die upstream gelöscht wurden, verschwinden beim nächsten vollständigen Laden des Bereichs aus dem lokalen Cache.
 
 ## Datenquellen und Nutzungsbedingungen
 

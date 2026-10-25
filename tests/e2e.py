@@ -22,6 +22,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -39,6 +40,8 @@ PHONE = {
     "locale": "de-DE",
     "timezone_id": "Europe/Berlin",
 }
+SEARCH_DONE = """() => !document.querySelector('#sheet-sub').textContent.startsWith('Suche')
+    && ![...document.querySelectorAll('.list-note')].some(n => n.textContent.startsWith('Suche'))"""
 NETWORK_ERROR = re.compile(r"ERR_INTERNET_DISCONNECTED|ERR_FAILED|Failed to fetch")
 
 failures: list[str] = []
@@ -107,6 +110,18 @@ def user_offset(page):
     }""")
 
 
+def settled_user_offset(page, timeout=8.0):
+    """Wie user_offset, aber erst wenn die Kartenanimation vorbei ist (drei gleiche Messungen hintereinander)."""
+    values = []
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        values.append(user_offset(page))
+        if len(values) >= 3 and values[-1] == values[-2] == values[-3]:
+            break
+        page.wait_for_timeout(250)
+    return values[-1]
+
+
 def drag_sheet_up(context, page):
     head = page.locator("#sheet-head").bounding_box()
     x, y = head["x"] + head["width"] / 2, head["y"] + 10
@@ -154,8 +169,8 @@ def test_mobile(browser, base, args):
     check(count >= 10, "Liste enthält mindestens 10 Stationen", f"{count}")
     dists = distances_in_meters(page)
     check(dists == sorted(dists), "Liste ist nach Entfernung sortiert", f"{dists[:8]}")
-    page.wait_for_timeout(800)
-    check(abs(user_offset(page)) < 3, "Karte ist auf den Standort zentriert", f"Abstand zur Mitte: {user_offset(page)} px")
+    offset = settled_user_offset(page)
+    check(offset < 3, "Karte ist auf den Standort zentriert", f"Abstand zur Mitte: {offset} px")
     shot(page, args, "1-liste")
 
     section("Handy: Detailansicht")
@@ -216,10 +231,15 @@ def test_mobile(browser, base, args):
     section("Handy: Filter")
     page.click('.chip[data-filter="open"]')
     page.wait_for_timeout(400)
+    page.wait_for_function(SEARCH_DONE, timeout=60000)
     statuses = page.locator(".list .item").evaluate_all(
         "items => items.map(i => i.querySelector('.status')?.className || '')")
     check(all(re.search(r"\b(open|soon|public)\b", s) for s in statuses),
-          "'Jetzt geöffnet' zeigt nur geöffnete Stationen", f"{statuses}")
+          "'Jetzt geöffnet' zeigt nur geöffnete Stationen", f"{len(statuses)} geöffnet")
+    if statuses:
+        sub = page.inner_text("#sheet-sub")
+        first = page.locator(".list .item .item-dist b").first.inner_text()
+        check(f"nächste {first} " in sub, "Kopfzeile nennt die Entfernung der ersten gezeigten Station", f"{sub!r} / {first!r}")
     page.click('.chip[data-filter="open"]')
 
     page.click('.chip[data-filter="fountain"]')
@@ -276,8 +296,8 @@ def test_mobile(browser, base, args):
     page.click("#locate-btn")
     page.wait_for_function("document.querySelector('#sheet-title').textContent === 'In deiner Nähe'", timeout=10000)
     page.wait_for_function("!document.querySelector('#sheet-sub').textContent.startsWith('Suche')", timeout=30000)
-    page.wait_for_timeout(1500)
-    check(abs(user_offset(page)) < 3, "Standort-Knopf zentriert die Karte auf den Standort", f"Abstand zur Mitte: {user_offset(page)} px")
+    offset = settled_user_offset(page)
+    check(offset < 3, "Standort-Knopf zentriert die Karte auf den Standort", f"Abstand zur Mitte: {offset} px")
 
     if args.full:
         section("Handy: Alle Stationen speichern")
@@ -327,6 +347,44 @@ def test_fresh_visitor(browser, base, station_hash, args):
     context.close()
 
 
+def test_returning_user(browser, base, station_hash, args):
+    """Standort ist freigegeben: stille Ortung und Standort-Updates dürfen eine Station nicht schließen."""
+    section("Rückkehrer: geteilter Link mit freigegebenem Standort")
+    context = browser.new_context(**PHONE, geolocation=OLDENBURG, permissions=["geolocation"])
+    page = context.new_page()
+    console = ConsoleWatcher(page)
+    page.goto(f"{base}{station_hash}")
+    page.wait_for_function("document.querySelector('.list .item')", timeout=30000)  # Ortung + Umkreissuche fertig
+    page.wait_for_timeout(1500)
+    check(page.is_visible("#view-detail") and page.evaluate("location.hash") == station_hash,
+          "Station bleibt nach der stillen Ortung geöffnet")
+
+    section("Rückkehrer: Standort ändert sich bei geöffneter Station")
+    if not page.is_visible("#view-detail"):  # damit dieser Teil auch nach einem Fehler oben aussagekräftig bleibt
+        page.locator(".list .item button").first.click()
+        page.wait_for_selector("#view-detail .facts", timeout=15000)
+    station_hash = page.evaluate("location.hash")
+    before = page.locator(".list .item .item-dist b").first.inner_text()
+    context.set_geolocation({**OLDENBURG, "latitude": OLDENBURG["latitude"] + 0.012})  # gut 1 km nördlich
+    page.wait_for_function("t => document.querySelector('.list .item .item-dist b')?.textContent !== t", arg=before,
+                           timeout=30000)
+    check(page.is_visible("#view-detail") and page.evaluate("location.hash") == station_hash,
+          "Station bleibt beim Gehen geöffnet (Liste im Hintergrund aktualisiert)")
+    if page.is_visible("#back-btn"):
+        page.click("#back-btn")
+
+    section("Ortssuche: Enter vor dem Ende der Suche")
+    page.fill("#q", "Hamburg")
+    page.wait_for_selector("#search-results li button:has-text('Hamburg')", timeout=15000)
+    page.fill("#q", "München")
+    page.press("#q", "Enter")
+    page.wait_for_function("document.querySelector('#sheet-title').textContent.startsWith('Nahe')", timeout=15000)
+    title = page.inner_text("#sheet-title")
+    check("München" in title, "Enter nimmt das Ergebnis des aktuellen Textes", title)
+    check(not console.errors, "Keine JavaScript-Fehler", "\n    ".join(console.errors))
+    context.close()
+
+
 def test_desktop(browser, base, args):
     section("Desktop im Dark Mode")
     context = browser.new_context(viewport={"width": 1366, "height": 820}, color_scheme="dark", locale="de-DE",
@@ -367,6 +425,7 @@ def main():
         test_unit(browser, base)
         station_hash = test_mobile(browser, base, args)
         test_fresh_visitor(browser, base, station_hash, args)
+        test_returning_user(browser, base, station_hash, args)
         test_desktop(browser, base, args)
         browser.close()
 

@@ -14,6 +14,8 @@ const RADII = [1000, 2500, 5000, 10000, 25000, 50000, 100000, 200000];
 const MAP_LOAD_MIN_ZOOM = 10;  // darunter werden beim Verschieben keine neuen Stationen geladen
 const BOX_TTL = 10 * 60 * 1000;
 const DETAILS_TTL = 24 * 60 * 60 * 1000;
+const OPEN_WANT = 10;          // "Jetzt geöffnet": so viele geöffnete Stationen suchen wir mindestens …
+const OPEN_SCAN_MAX = 200;     // … und prüfen dafür höchstens so viele Stationen (4 Detail-Anfragen)
 const OPEN_MAP_MAX = 150;      // "Jetzt geöffnet" auf der Karte: höchstens so viele Details (3 Anfragen) nachladen
 const DEFAULT_VIEW = { lat: 51.16, lng: 10.45, zoom: 6 };
 let userMovedMap = false;
@@ -85,7 +87,9 @@ const local = {
 
 function debounce(fn, ms) {
   let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  const debounced = (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  debounced.cancel = () => clearTimeout(t);
+  return debounced;
 }
 
 let toastTimer;
@@ -475,7 +479,14 @@ function computeNearby() {
     .map(s => ({ s, d: distance(from, s) }))
     .sort((a, b) => a.d - b.d);
   state.nearbyTotal = rows.length;
-  state.nearby = rows.slice(0, LIST_MAX);
+  // Bei "Jetzt geöffnet" mehr Kandidaten behalten, die Liste zeigt davon nur die geöffneten.
+  state.nearby = rows.slice(0, state.filters.open ? OPEN_SCAN_MAX : LIST_MAX);
+}
+
+/** Die Zeilen, die die Liste zeigt: bei "Jetzt geöffnet" nur nachweislich geöffnete Stationen. */
+function listedRows() {
+  if (!state.filters.open) return state.nearby;
+  return state.nearby.filter(r => statusFor(r.s)?.open).slice(0, LIST_MAX);
 }
 
 /** Lädt wachsende Boxen um `ref`, bis genug passende Stationen im Radius liegen. */
@@ -483,9 +494,16 @@ async function loadAround(ref, cancelled) {
   for (const r of RADII) {
     await loadBox(bboxAround(ref, r));
     if (cancelled()) return;
-    let count = 0;
-    for (const s of state.stations.values()) if (matchesStatic(s) && distance(ref, s) <= r) count++;
-    if (count >= NEARBY_WANT) return;
+    const inside = [...state.stations.values()].filter(s => matchesStatic(s) && distance(ref, s) <= r);
+    if (!state.filters.open) {
+      if (inside.length >= NEARBY_WANT) return;
+      continue;
+    }
+    // "Jetzt geöffnet" lässt sich nur mit Öffnungszeiten prüfen; die Zahl der Kandidaten ist begrenzt.
+    if (inside.length >= OPEN_SCAN_MAX) return;
+    await ensureDetails(inside.map(s => s.id));
+    if (cancelled()) return;
+    if (inside.filter(s => statusFor(s)?.open).length >= OPEN_WANT) return;
   }
 }
 
@@ -509,18 +527,25 @@ async function findNearby({ fit = true } = {}) {
   if (seq !== nearbySeq) return;
   if (failed) setOffline(true);
 
-  state.loading = false;
   computeNearby();
+  // Für "Jetzt geöffnet" stehen Liste und Kartenausschnitt erst mit den Öffnungszeiten fest.
+  const needHours = state.filters.open;
+  if (needHours) {
+    await ensureDetails(state.nearby.map(r => r.s.id));
+    if (seq !== nearbySeq) return;
+  }
+  state.loading = false;
   renderList();
   if (fit && !state.selected) fitNearby();
 
+  if (needHours) return;
   await ensureDetails(state.nearby.map(r => r.s.id));
   if (seq === nearbySeq) renderList();
 }
 
 function fitNearby() {
   if (!state.ref) return;
-  const pts = state.nearby.slice(0, 5).map(r => [r.s.lat, r.s.lng]);
+  const pts = listedRows().slice(0, 5).map(r => [r.s.lat, r.s.lng]);
   if (!pts.length) {
     panToVisible([state.ref.lat, state.ref.lng], 13);
     return;
@@ -532,12 +557,13 @@ function fitNearby() {
   fitVisible(L.latLngBounds([...pts, ...mirrored]));
 }
 
-function setRef(ref, { fit = true } = {}) {
+/** `keepDetail`: automatische Standort-Updates lassen eine geöffnete Station offen. */
+function setRef(ref, { fit = true, keepDetail = false } = {}) {
   state.ref = ref;
   showRefMarker();
   $('#here-btn').hidden = true;
   $('#locate-btn').classList.toggle('active', ref.kind === 'gps');
-  if (state.selected) closeDetail();
+  if (state.selected && !keepDetail) closeDetail();
   // Beim Kartenausschnitt bleibt das Sheet unten, sonst würde es einen Teil des Ausschnitts verdecken.
   if (!isDesktop() && snap === 'peek' && ref.kind !== 'map') setSnap('half');
   findNearby({ fit });
@@ -561,7 +587,7 @@ function locate({ quiet = false } = {}) {
     locating = false;
     btn.removeAttribute('aria-busy');
     local.set('located', true);
-    onPosition(pos, true);
+    onPosition(pos, true, quiet);
     startWatch();
   }, err => {
     locating = false;
@@ -576,15 +602,16 @@ function locate({ quiet = false } = {}) {
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
 }
 
-function onPosition(pos, explicit) {
+/** `explicit`: Ergebnis von locate(); `quiet`: stille Ortung beim Start, z. B. neben einem geöffneten Deep-Link. */
+function onPosition(pos, explicit, quiet = false) {
   const { latitude: lat, longitude: lng, accuracy } = pos.coords;
   state.user = { lat, lng, accuracy };
   showUser();
   if (explicit) {
-    setRef({ lat, lng, kind: 'gps', label: 'deinem Standort' });
+    setRef({ lat, lng, kind: 'gps', label: 'deinem Standort' }, { keepDetail: quiet });
   } else if (state.ref?.kind === 'gps') {
     if (distance(state.ref, state.user) > 400) {
-      setRef({ lat, lng, kind: 'gps', label: 'deinem Standort' }, { fit: false });
+      setRef({ lat, lng, kind: 'gps', label: 'deinem Standort' }, { fit: false, keepDetail: true });
     } else {
       // kleine Bewegungen: nur Entfernungen neu sortieren, ohne neue Anfrage
       state.ref = { ...state.ref, lat, lng };
@@ -633,7 +660,8 @@ function refLabel() {
   return 'Im Kartenausschnitt';
 }
 
-function renderHeader(shownCount) {
+function renderHeader(rows) {
+  const shownCount = rows.length;
   $('#sheet-title').textContent = state.ref ? refLabel() : 'Wasser in der Nähe';
   const sub = $('#sheet-sub');
   if (!state.ref) sub.textContent = 'Kostenlos Leitungswasser auffüllen';
@@ -642,8 +670,8 @@ function renderHeader(shownCount) {
   else if (state.ref.bounds) {
     const n = state.filters.open ? shownCount : state.nearbyTotal;
     sub.textContent = `${plural(n, 'Station', 'Stationen')} im sichtbaren Bereich`
-      + (state.user ? ` · nächste ${formatDistance(state.nearby[0].d)} von dir` : '');
-  } else sub.textContent = `${plural(shownCount, 'Station', 'Stationen')} · nächste ${formatDistance(state.nearby[0].d)} entfernt`;
+      + (state.user ? ` · nächste ${formatDistance(rows[0].d)} von dir` : '');
+  } else sub.textContent = `${plural(shownCount, 'Station', 'Stationen')} · nächste ${formatDistance(rows[0].d)} entfernt`;
 }
 
 function itemNode({ s, d }) {
@@ -690,23 +718,19 @@ function skeleton() {
 function renderList() {
   const view = $('#view-list');
   if (!state.ref) {
-    renderHeader(0);
+    renderHeader([]);
     view.replaceChildren(emptyState());
     return;
   }
   if (state.loading && !state.nearby.length) {
-    renderHeader(0);
+    renderHeader([]);
     view.replaceChildren(skeleton());
     return;
   }
 
-  let rows = state.nearby;
-  let hidden = 0;
-  if (state.filters.open) {
-    rows = rows.filter(r => statusFor(r.s)?.open);
-    hidden = state.nearby.length - rows.length;
-  }
-  renderHeader(rows.length);
+  const rows = listedRows();
+  const hidden = state.filters.open ? state.nearby.filter(r => !statusFor(r.s)?.open).length : 0;
+  renderHeader(rows);
 
   const notes = [];
   if (state.filters.open && hidden) {
@@ -759,9 +783,7 @@ for (const chip of document.querySelectorAll('.chip[data-filter]')) {
     state.filters[key] = !state.filters[key];
     applyFilters();
     if (key === 'open') loadVisible();
-    if (!state.ref) return;
-    if (key === 'open') renderList();
-    else findNearby({ fit: false });
+    if (state.ref) findNearby({ fit: false });
   });
 }
 
@@ -964,10 +986,12 @@ const q = $('#q');
 const results = $('#search-results');
 let searchAbort = null;
 let searchItems = [];
+let searchItemsFor = ''; // Suchtext, zu dem searchItems gehören
 let activeIndex = -1;
 
 function showResults(items, message) {
   searchItems = items;
+  searchItemsFor = q.value.trim();
   activeIndex = -1;
   const nodes = items.map((r, i) => el('li', { role: 'option', id: `sr-${i}`, 'aria-selected': 'false' },
     el('button', { type: 'button', tabindex: '-1', onclick: () => chooseResult(r) },
@@ -1002,7 +1026,7 @@ function chooseResult(r) {
   setRef({ lat: r.lat, lng: r.lng, kind: 'place', label: r.name });
 }
 
-const runSearch = debounce(async text => {
+async function search(text) {
   searchAbort?.abort();
   searchAbort = new AbortController();
   try {
@@ -1012,7 +1036,8 @@ const runSearch = debounce(async text => {
   } catch (err) {
     if (err.name !== 'AbortError') showResults([], navigator.onLine ? 'Suche gerade nicht möglich' : 'Ortssuche braucht eine Internetverbindung');
   }
-}, 300);
+}
+const runSearch = debounce(search, 300);
 
 q.addEventListener('input', () => {
   const text = q.value.trim();
@@ -1042,8 +1067,15 @@ q.addEventListener('keydown', e => {
   }
 });
 
-$('#search-form').addEventListener('submit', e => {
+$('#search-form').addEventListener('submit', async e => {
   e.preventDefault();
+  const text = q.value.trim();
+  if (activeIndex < 0 && text.length >= 3 && searchItemsFor !== text) {
+    // Enter vor dem Ende der Suche: nicht die Treffer des vorherigen Textes nehmen
+    runSearch.cancel();
+    await search(text);
+    if (searchItemsFor !== text) return;
+  }
   const r = searchItems[activeIndex] || searchItems.find(x => !x.locate);
   if (r) chooseResult(r);
 });
