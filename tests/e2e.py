@@ -97,6 +97,16 @@ def distances_in_meters(page):
     return out
 
 
+def user_offset(page):
+    """Abstand des Standortpunkts zur Mitte des sichtbaren Kartenbereichs in Pixeln."""
+    return page.evaluate("""() => {
+        const r = document.querySelector('.user-loc').getBoundingClientRect();
+        const top = document.querySelector('.topbar').getBoundingClientRect().bottom + 8;
+        const bottom = document.getElementById('sheet').getBoundingClientRect().top;
+        return Math.round(Math.hypot(r.x + r.width / 2 - innerWidth / 2, r.y + r.height / 2 - (top + bottom) / 2));
+    }""")
+
+
 def drag_sheet_up(context, page):
     head = page.locator("#sheet-head").bounding_box()
     x, y = head["x"] + head["width"] / 2, head["y"] + 10
@@ -144,6 +154,8 @@ def test_mobile(browser, base, args):
     check(count >= 10, "Liste enthält mindestens 10 Stationen", f"{count}")
     dists = distances_in_meters(page)
     check(dists == sorted(dists), "Liste ist nach Entfernung sortiert", f"{dists[:8]}")
+    page.wait_for_timeout(800)
+    check(abs(user_offset(page)) < 3, "Karte ist auf den Standort zentriert", f"Abstand zur Mitte: {user_offset(page)} px")
     shot(page, args, "1-liste")
 
     section("Handy: Detailansicht")
@@ -259,6 +271,13 @@ def test_mobile(browser, base, args):
     check(listed > 0, "Ausschnitt-Suche findet Stationen", page.inner_text("#sheet-sub"))
     check(not outside, "Alle gelisteten Stationen liegen im sichtbaren Kartenbereich", f"außerhalb (px): {outside}")
     shot(page, args, "5b-ausschnitt")
+
+    section("Handy: Standort-Knopf")
+    page.click("#locate-btn")
+    page.wait_for_function("document.querySelector('#sheet-title').textContent === 'In deiner Nähe'", timeout=10000)
+    page.wait_for_function("!document.querySelector('#sheet-sub').textContent.startsWith('Suche')", timeout=30000)
+    page.wait_for_timeout(1500)
+    check(abs(user_offset(page)) < 3, "Standort-Knopf zentriert die Karte auf den Standort", f"Abstand zur Mitte: {user_offset(page)} px")
 
     if args.full:
         section("Handy: Alle Stationen speichern")

@@ -525,8 +525,11 @@ function fitNearby() {
     panToVisible([state.ref.lat, state.ref.lng], 13);
     return;
   }
-  pts.push([state.ref.lat, state.ref.lng]);
-  fitVisible(L.latLngBounds(pts));
+  // Punkte um den Bezugspunkt spiegeln, damit er beim Einpassen in der Mitte bleibt
+  const z = map.getZoom();
+  const c = map.project([state.ref.lat, state.ref.lng], z);
+  const mirrored = pts.map(p => map.unproject(c.multiplyBy(2).subtract(map.project(p, z)), z));
+  fitVisible(L.latLngBounds([...pts, ...mirrored]));
 }
 
 function setRef(ref, { fit = true } = {}) {
