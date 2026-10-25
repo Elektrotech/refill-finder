@@ -180,6 +180,27 @@ def test_mobile(browser, base, args):
     check(page.evaluate("document.body.dataset.snap") == "full", "Wischen nach oben öffnet das Sheet ganz")
     shot(page, args, "3-sheet-voll")
 
+    # Aus dem vollen Sheet heraus geöffnet: Sheet auf halbe Höhe, Station mittig im sichtbaren Kartenbereich
+    page.locator(".list .item button").nth(1).click()
+    page.wait_for_selector("#view-detail .facts", timeout=15000)
+    page.wait_for_timeout(1200)
+    sel = page.evaluate("location.hash").removeprefix("#/s/")
+    offset = page.evaluate("""id => {
+        const li = document.querySelector(`.list .item[data-id="${id}"]`);
+        const view = JSON.parse(localStorage.getItem('refill:view'));
+        const scale = 256 * 2 ** view.zoom;
+        const merc = (lat, lng) => (1 - Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) / Math.PI) / 2 * scale;
+        const m = document.getElementById('map').getBoundingClientRect();
+        const top = document.querySelector('.topbar').getBoundingClientRect().bottom + 8;
+        const bottom = document.getElementById('sheet').getBoundingClientRect().top;
+        const y = merc(+li.dataset.lat) - merc(view.lat) + m.height / 2;
+        return Math.round(y - (top + bottom) / 2);
+    }""", sel)
+    check(page.evaluate("document.body.dataset.snap") == "half", "Station aus vollem Sheet öffnet auf halber Höhe")
+    check(abs(offset) < 30, "Station liegt mittig im sichtbaren Kartenbereich", f"Abstand zur Mitte: {offset}px")
+    page.click("#back-btn")
+    page.wait_for_timeout(500)
+
     section("Handy: Filter")
     page.click('.chip[data-filter="open"]')
     page.wait_for_timeout(400)

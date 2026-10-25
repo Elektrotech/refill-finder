@@ -336,6 +336,14 @@ function setSnap(name) {
   applySheetY(snapY(name));
 }
 
+/** Snap durch Ziehen/Antippen: Gibt das Sheet mehr Karte frei, die gewählte Station wieder mittig zeigen. */
+function userSnap(name) {
+  const before = snapY(snap); // nicht sheetY: das steht beim Ziehen schon auf der Fingerposition
+  setSnap(name);
+  const s = state.selected && state.stations.get(state.selected);
+  if (s && sheetY > before) panToVisible([s.lat, s.lng]);
+}
+
 (function setupSheetDrag() {
   let startY = 0, startSheetY = 0, dragging = false;
   let lastY = 0, lastT = 0, velocity = 0;
@@ -362,7 +370,7 @@ function setSnap(name) {
     window.removeEventListener('pointercancel', end);
     if (!dragging) {
       // Tipp auf Griff/Titel: Sheet weiter aufziehen bzw. auf halbe Höhe zurück
-      if (e.type === 'pointerup' && !e.target.closest('button, a')) setSnap(snap === 'half' ? 'full' : 'half');
+      if (e.type === 'pointerup' && !e.target.closest('button, a')) userSnap(snap === 'half' ? 'full' : 'half');
       return;
     }
     dragging = false;
@@ -370,7 +378,7 @@ function setSnap(name) {
     const projected = sheetY + velocity * 180;
     const options = ['full', 'half', 'peek'].map(n => [n, Math.abs(snapY(n) - projected)]);
     options.sort((a, b) => a[1] - b[1]);
-    setSnap(options[0][0]);
+    userSnap(options[0][0]);
   };
 
   sheetHead.addEventListener('pointerdown', e => {
@@ -881,7 +889,8 @@ async function openDetail(id, { push = true } = {}) {
   sheet.setAttribute('aria-labelledby', 'detail-title');
   sheetBody.scrollTop = 0;
   renderDetail(id);
-  if (!isDesktop()) setSnap(snap === 'full' ? 'full' : 'half');
+  // Auf halbe Höhe, damit die Station auf der Karte sichtbar ist (bei "full" bliebe kein Kartenbereich übrig)
+  if (!isDesktop()) setSnap('half');
 
   let s = state.stations.get(id);
   if (s) panToVisible([s.lat, s.lng], Math.max(map.getZoom(), 15));
