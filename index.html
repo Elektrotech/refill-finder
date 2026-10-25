@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Refill-Finder</title>
+  <meta name="description" content="Kostenlos Leitungswasser auffüllen: die nächsten Refill-Stationen in deiner Nähe finden.">
+  <meta name="theme-color" content="#0a66c2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#11171d" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Refill">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="vendor/leaflet/leaflet.js" defer></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" hidden>
+    <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 2.7c-.3 0-.6.1-.8.4C9.4 5.3 5 10.6 5 14.6A7 7 0 0 0 12 21.6a7 7 0 0 0 7-7c0-4-4.4-9.3-6.2-11.5a1 1 0 0 0-.8-.4Z" fill="currentColor"/></symbol>
+    <symbol id="i-fountain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21h12M9 21V11h6v10M8 11h8"/><path d="M15 6c2 0 4 1 4.5 3.5M19.5 9.5v1.5"/><path d="M12 11V6.5a2 2 0 0 1 3-.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-locate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11.2 20 4l-7.2 16.5-2-7.3-7.3-2Z"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h3.5l1.8 4.5-2.3 1.4a11 11 0 0 0 6.1 6.1l1.4-2.3L20 15.5V19a1.5 1.5 0 0 1-1.6 1.5A16 16 0 0 1 3.5 5.6 1.5 1.5 0 0 1 5 4Z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.3"/></symbol>
+    <symbol id="i-access" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="1.6" fill="currentColor"/><path d="M6 8.5l6 1 6-1M12 9.5v5M12 14.5l-3 6M12 14.5l3 6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></symbol>
+    <symbol id="i-offline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5-2.6M19 13a10 10 0 0 0-2-1.5M2 9.5a15 15 0 0 1 4.5-2.8M22 9.5A15 15 0 0 0 11 5.6"/><circle cx="12" cy="20" r=".8" fill="currentColor"/></symbol>
+  </svg>
+
+  <div id="map" role="application" aria-label="Karte mit Refill-Stationen"></div>
+
+  <header class="topbar">
+    <form class="search" id="search-form" role="search" autocomplete="off">
+      <svg class="search-icon" aria-hidden="true"><use href="#i-search"/></svg>
+      <input id="q" type="search" placeholder="Ort oder Adresse suchen" enterkeyhint="search"
+             aria-label="Ort oder Adresse suchen" role="combobox" aria-autocomplete="list"
+             aria-controls="search-results" aria-expanded="false">
+      <button type="button" id="q-clear" class="icon-btn" aria-label="Suche leeren" hidden>
+        <svg aria-hidden="true"><use href="#i-close"/></svg>
+      </button>
+      <button type="button" id="menu-btn" class="icon-btn" aria-label="Info und Offline-Modus" aria-haspopup="dialog">
+        <svg aria-hidden="true"><use href="#i-info"/></svg>
+      </button>
+    </form>
+    <ul id="search-results" class="search-results" role="listbox" aria-label="Suchergebnisse" hidden></ul>
+  </header>
+
+  <div class="map-overlay">
+    <button type="button" id="here-btn" class="pill" hidden>
+      <svg aria-hidden="true"><use href="#i-search"/></svg>
+      Hier suchen
+    </button>
+    <p id="zoom-hint" class="pill pill-muted" hidden>Für mehr Stationen hineinzoomen</p>
+  </div>
+
+  <button type="button" id="locate-btn" class="fab" aria-label="Meinen Standort verwenden">
+    <svg aria-hidden="true"><use href="#i-locate"/></svg>
+  </button>
+
+  <section id="sheet" class="sheet" data-snap="half" aria-labelledby="sheet-title">
+    <div class="sheet-head" id="sheet-head">
+      <div class="handle" aria-hidden="true"></div>
+      <div id="head-list" class="head-list">
+        <div class="head-row">
+          <div>
+            <h1 class="sheet-title" id="sheet-title">Wasser in der Nähe</h1>
+            <p class="sheet-sub" id="sheet-sub">Kostenlos Leitungswasser auffüllen</p>
+          </div>
+          <span id="offline-badge" class="badge badge-offline" hidden>
+            <svg aria-hidden="true"><use href="#i-offline"/></svg> Offline
+          </span>
+        </div>
+        <div class="chips" role="group" aria-label="Filter">
+          <button type="button" class="chip" data-filter="open" aria-pressed="false">
+            <svg aria-hidden="true"><use href="#i-clock"/></svg> Jetzt geöffnet
+          </button>
+          <button type="button" class="chip" data-filter="fountain" aria-pressed="false">
+            <svg aria-hidden="true"><use href="#i-fountain"/></svg> Trinkbrunnen
+          </button>
+          <button type="button" class="chip" data-filter="accessible" aria-pressed="false">
+            <svg aria-hidden="true"><use href="#i-access"/></svg> Barrierefrei
+          </button>
+        </div>
+      </div>
+      <div id="head-detail" class="head-detail" hidden>
+        <button type="button" id="back-btn" class="text-btn">
+          <svg aria-hidden="true"><use href="#i-back"/></svg> Alle Stationen
+        </button>
+      </div>
+    </div>
+    <div class="sheet-body" id="sheet-body">
+      <div id="view-list"></div>
+      <article id="view-detail" class="detail" hidden></article>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <dialog id="about" class="dialog" aria-labelledby="about-title">
+    <form method="dialog" class="dialog-close-form">
+      <button class="icon-btn" aria-label="Schließen"><svg aria-hidden="true"><use href="#i-close"/></svg></button>
+    </form>
+    <div class="dialog-brand">
+      <img src="icons/icon.svg" alt="" width="48" height="48">
+      <div>
+        <h2 id="about-title">Refill-Finder</h2>
+        <p class="muted">Leitungswasser gratis auffüllen – unterwegs, in Cafés, Läden und an Trinkbrunnen.</p>
+      </div>
+    </div>
+
+    <section class="dialog-section" id="install-section" hidden>
+      <h3>Als App installieren</h3>
+      <p class="muted" id="install-text">Mit Startbildschirm-Symbol, im Vollbild und offline nutzbar.</p>
+      <button type="button" id="install-btn" class="btn btn-primary" hidden>
+        <svg aria-hidden="true"><use href="#i-download"/></svg> Installieren
+      </button>
+    </section>
+
+    <section class="dialog-section">
+      <h3>Offline nutzen</h3>
+      <p class="muted">Bereits angesehene Stationen bleiben auch ohne Netz verfügbar. Für unterwegs kannst du alle rund 9.000 Stationen auf einmal speichern (einige MB Download). Adressen und Öffnungszeiten werden gespeichert, sobald du eine Station in der Liste siehst.</p>
+      <p id="offline-status" class="offline-status"></p>
+      <progress id="offline-progress" max="1" value="0" hidden></progress>
+      <button type="button" id="offline-btn" class="btn">
+        <svg aria-hidden="true"><use href="#i-download"/></svg> Alle Stationen speichern
+      </button>
+    </section>
+
+    <section class="dialog-section">
+      <h3>Über die Daten</h3>
+      <p class="muted">
+        Die Stationen stammen von der <a href="https://refill-deutschland.de/" target="_blank" rel="noopener">Refill-Deutschland</a>-Karte,
+        gepflegt auf <a href="https://www.kartevonmorgen.org/" target="_blank" rel="noopener">Karte von Morgen</a> (Lizenz CC0).
+        Kartenmaterial © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende,
+        Ortssuche über <a href="https://photon.komoot.io/" target="_blank" rel="noopener">Photon</a>.
+      </p>
+      <p class="muted">
+        Inoffizielle App, nicht von Refill Deutschland betrieben. Fehler in einem Eintrag lassen sich direkt bei Karte von Morgen korrigieren.
+        Du möchtest selbst Refill-Station werden? <a href="https://refill-deutschland.de/werde-refill-station/" target="_blank" rel="noopener">Hier geht's lang</a>.
+      </p>
+    </section>
+  </dialog>
+
+  <noscript><p class="noscript">Diese App benötigt JavaScript.</p></noscript>
+</body>
+</html>

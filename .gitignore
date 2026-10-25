@@ -1,0 +1,13 @@
+# Test-Artefakte
+shots/
+screenshots/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editor / System
+.DS_Store
+.idea/
+.vscode/

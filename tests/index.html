@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Refill-Finder Tests</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 16px; background: #fff; color: #111; }
+    .pass { color: #0a7a3d; }
+    .fail { color: #b3261e; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Tests</h1>
+  <p id="summary">läuft …</p>
+  <ul id="results"></ul>
+  <script type="module">
+    import { tests } from './hours.test.js';
+    const ul = document.getElementById('results');
+    let failed = 0;
+    for (const { name, fn } of tests) {
+      const li = document.createElement('li');
+      try {
+        fn();
+        li.className = 'pass';
+        li.textContent = `✓ ${name}`;
+      } catch (e) {
+        failed++;
+        li.className = 'fail';
+        li.textContent = `✗ ${name}: ${e.message}`;
+      }
+      ul.append(li);
+    }
+    const summary = document.getElementById('summary');
+    summary.textContent = `${tests.length - failed}/${tests.length} bestanden`;
+    summary.dataset.failed = failed;
+    summary.dataset.done = 'true';
+  </script>
+</body>
+</html>
