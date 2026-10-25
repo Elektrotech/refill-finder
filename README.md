@@ -87,8 +87,6 @@ Die Such-API liefert höchstens 2000 Einträge pro Anfrage und sortiert nicht na
 
 Die App hat keinen eigenen Server und kein Tracking; der genaue GPS-Standort verlässt das Gerät nicht. Für die Suche wird aber ein Kartenausschnitt um den Standort an die Karte-von-Morgen-API gesendet (die ungefähre Position ist daraus ableitbar). GitHub Pages, Karte von Morgen, OpenStreetMap und Photon (nur bei der Ortssuche) sehen technisch bedingt die IP-Adresse. Lokal gespeichert werden Stationen und Details (IndexedDB), Filter und letzter Kartenausschnitt (localStorage). Derselbe Text steht im Info-Dialog der App.
 
-Ob für ein öffentliches Angebot zusätzlich Impressum und Datenschutzerklärung nötig sind, hängt vom Einzelfall ab und ist hier nicht geprüft.
-
 ## Lizenz
 
 Code: [MIT](LICENSE). Eingebundene Fremdsoftware: Leaflet 1.9.4 unter [BSD-2-Clause](vendor/leaflet/LICENSE).
