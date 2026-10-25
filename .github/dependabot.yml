@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # Hält die Actions im Pages-Workflow aktuell, bevor alte Versionen abgeschaltet werden
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
