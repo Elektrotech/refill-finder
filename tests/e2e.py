@@ -171,6 +171,8 @@ def test_mobile(browser, base, args):
     check(dists == sorted(dists), "Liste ist nach Entfernung sortiert", f"{dists[:8]}")
     offset = settled_user_offset(page)
     check(offset < 3, "Karte ist auf den Standort zentriert", f"Abstand zur Mitte: {offset} px")
+    zoom = page.evaluate("JSON.parse(localStorage.getItem('refill:view')).zoom")
+    check(zoom >= 15, "Karte zoomt nah an den Standort heran", f"Zoom: {zoom}")
     shot(page, args, "1-liste")
 
     section("Handy: Detailansicht")

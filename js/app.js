@@ -12,6 +12,7 @@ const NEARBY_WANT = 25;        // so viele Treffer suchen wir mindestens im Umkr
 const LIST_MAX = 50;           // Länge der Liste (= Details, die vorab geladen werden)
 const RADII = [1000, 2500, 5000, 10000, 25000, 50000, 100000, 200000];
 const MAP_LOAD_MIN_ZOOM = 10;  // darunter werden beim Verschieben keine neuen Stationen geladen
+const NEARBY_MIN_ZOOM = 15;    // weiter zoomt der Sprung zum Bezugspunkt nicht heraus, auch wenn Stationen dann außerhalb liegen
 const BOX_TTL = 10 * 60 * 1000;
 const DETAILS_TTL = 24 * 60 * 60 * 1000;
 const OPEN_WANT = 10;          // "Jetzt geöffnet": so viele geöffnete Stationen suchen wir mindestens …
@@ -298,17 +299,6 @@ function panToVisible(latlng, zoom) {
   map.flyTo(target, z, { animate: !reduceMotion, duration: 0.6 });
 }
 
-function fitVisible(bounds) {
-  markProgrammatic();
-  map.flyToBounds(bounds, {
-    paddingTopLeft: [32, topInset() + 24],
-    paddingBottomRight: [32, bottomInset() + 24],
-    maxZoom: 16,
-    animate: !reduceMotion,
-    duration: 0.7,
-  });
-}
-
 /* ---------- Bottom Sheet (Handy) ---------- */
 
 const sheet = $('#sheet');
@@ -554,7 +544,11 @@ function fitNearby() {
   const z = map.getZoom();
   const c = map.project([state.ref.lat, state.ref.lng], z);
   const mirrored = pts.map(p => map.unproject(c.multiplyBy(2).subtract(map.project(p, z)), z));
-  fitVisible(L.latLngBounds([...pts, ...mirrored]));
+  // Am Handy bleibt neben Suchleiste und Sheet wenig Karte übrig; liegen die Stationen weiter auseinander
+  // (Stadtrand), würde das Einpassen fast die ganze Stadt zeigen. Die Liste zeigt die Entfernungen ohnehin.
+  const padding = L.point(64, topInset() + bottomInset() + 48);
+  const fit = map.getBoundsZoom(L.latLngBounds([...pts, ...mirrored]), false, padding);
+  panToVisible([state.ref.lat, state.ref.lng], Math.min(Math.max(fit, NEARBY_MIN_ZOOM), 16));
 }
 
 /** `keepDetail`: automatische Standort-Updates lassen eine geöffnete Station offen. */
